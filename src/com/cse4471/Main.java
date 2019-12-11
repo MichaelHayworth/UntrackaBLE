@@ -2,12 +2,10 @@ package com.cse4471;
 
 import brut.androlib.AndrolibException;
 import s3.fastapk.APKContext;
-
 import java.io.*;
-import java.net.URL;
+import java.nio.file.FileAlreadyExistsException;
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Map;
-import java.util.Scanner;
 
 public class Main {
     /**
@@ -18,11 +16,22 @@ public class Main {
      *      <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
      * Additionally, if the app has this permission it can turn Bluetooth on all on it's own:
      *      <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
-     * @param apk the manifest of the apk file being analyzed
-     * @return
+     * @param perms An ArrayList of the permissions the app has access to
+     * @return true when both required permissions are present, false otherwise
      */
-    static Boolean hasPerms(APKContext apk){
+    static Boolean checkPerms(ArrayList<String> perms){
+        Boolean hasBluetooth = false;
+        Boolean hasLocation = false;
 
+        for(String perm : perms){
+            if(perm.equals("android.permission.BLUETOOTH")){
+                hasBluetooth = true;
+            } else if(perm.equals("android.permission.ACCESS_FINE_LOCATION")){
+                hasLocation = true;
+            }
+        }
+
+        return hasBluetooth && hasLocation;
     }
     /***
      * This function will report on if the app uses Google's built-in code for connecting to
@@ -34,71 +43,58 @@ public class Main {
      * Look for the startLeScan() method
      * There will likely also be a stopLeScan() method since it saves battery
      *
-     * @param apk the app being analyzed
+     * @param sms the app being analyzed
      * @return whether the app makes use of BLE scanning for location access
      */
-    static Boolean checkNativeBLE(APKContext apk){
-        Boolean out = false;
-        // TODO: Code this function
-        return out;
-    }
+    static Boolean checkNativeBLE(HashMap<String, String> sms){
+        // This string is the function call in smali form
+        String function = "->startLEScan()";
 
-    static Boolean checkFacebookBLE(APKContext apk){
-        Boolean out = false;
-        // TODO: Code this function
-        return out;
+        for(HashMap.Entry<String, String> smali : sms.entrySet()) {
+            String file = smali.getValue();
+            if(file.contains(function)){
+                return true;
+            }
+        }
+        return false;
     }
 
     public static void main(String[] args) throws IOException, AndrolibException {
-        try {
-            // Load in the file that contains the strings we are looking out for
-            URL stringsPath = Main.class.getResource("Strings");
-            Scanner strings = new Scanner(new File(stringsPath.getFile()));
-
-            // Create a file output stream for the generated report
-            PrintWriter report = new PrintWriter(new FileWriter("report.txt"));
             try {
                 // Load the apk file being examined
-                APKContext apk = new APKContext("C:\\Users\\Michael\\IdeaProjects\\UntrackaBLE\\src\\com\\cse4471\\testApps\\Canvas.apk", true);
+                String path = args[0]; // File path is the first argument
+                APKContext apk = new APKContext(path, true);
 
-                // Print out the app package name
-                report.println(apk.getManifest());
-                Boolean foundBLE = false;
+                /* BLE SDKs we know about */
+                Boolean nativeBLE = false;
 
                 // Check if the app uses the right permissions, if not we don't care
-                Boolean hasPerms = checkPerms(apk.getManifest());
+                Boolean hasPerms = checkPerms(apk.getManifest().getPermissions());
 
                 if(hasPerms) {
                     // Get the Smali code files
+                    // Name mapped to content
                     HashMap<String, String> sms = apk.getSmalis();
 
-                    // Search for native usage of BLE
-                    foundBLE = checkNativeBLE(apk);
-
-                    // Search for usage of Facebook's BLE API
-                    if (foundBLE) {
-                        foundBLE = checkFacebookBLE(apk);
-                    }
-
                     /*
-                    for (Map.Entry<String, String> clsName : sms.entrySet()) {
-                        report.println("--------------------------------------------------------------------------");
-                        report.println(clsName.getKey()); //
-                        report.println(clsName.getValue());
-                        report.println("--------------------------------------------------------------------------");
-                    }
+                        Check for each BLE SDK we know about
                      */
+                    // Search for native usage of BLE
+                    nativeBLE = checkNativeBLE(sms);
+                    // Other BLE SDKs can be added here if they come about in the future
+
+                    // Print out the first result: that perms are present for BLE scanning to take place
+                    System.out.println("HAS PERMS");
+                }
+                // Go through the results, printing out what was found
+                // This can be very simply tweaked to use a log file or some other solution as
+                // some future research may need.
+                if(nativeBLE){
+                    System.out.println("FOUND NATIVE BLE");
                 }
             } catch (FileNotFoundException e) {
                 System.err.println("ERROR: The apk file is missing!");
-                // Close the output stream if an error was encountered
-                report.close();
             }
-
-            strings.close();
-        } catch (FileNotFoundException e) {
-            System.err.println("ERROR: Strings file is missing!");
-        }
 
         // Inform the user that the program has completed running
         System.out.println("Process Complete");
